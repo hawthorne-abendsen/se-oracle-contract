@@ -28,10 +28,10 @@ fn make_signature(e: &Env, contract_id: &BytesN<32>, kp: &Keypair, function: &st
     })
 }
 
-fn generate_assets(env: &Env, count: u8) -> Vec<BytesN<16>> {
+fn generate_assets(env: &Env, count: u8) -> Vec<BytesN<32>> {
     let mut assets = Vec::new(env);
     for i in 0..count {
-        assets.push_back(BytesN::from_array(&env, &[i; 16]));
+        assets.push_back(BytesN::from_array(&env, &[i; 32]));
     }
     assets
 }
@@ -48,23 +48,17 @@ fn test() {
     let client = OracleContractClient::new(&env, &contract_id);
 
     //try to get price before initialization
-    let result = client.get_price(&AssetName {
-        name: asset1.clone(),
-    });
+    let result = client.get_price(&Identifier::Contract(asset1.clone()));
     assert_eq!(result, AssetPrice::None);
 
     let updates = vec![
         &env,
         AssetPriceUpdate {
-            asset: AssetName {
-                name: asset1.clone(),
-            },
+            asset: Identifier::Contract(asset1.clone()),
             price: 100,
         },
         AssetPriceUpdate {
-            asset: AssetName {
-                name: asset2.clone(),
-            },
+            asset: Identifier::Contract(asset2.clone()),
             price: 200,
         },
     ];
@@ -93,9 +87,7 @@ fn test() {
     client.set_price(&sig, &nonce, &updates);
 
     //check prices
-    let mut result = client.get_price(&AssetName {
-        name: asset1.clone(),
-    });
+    let mut result = client.get_price(&Identifier::Contract(asset1.clone()));
     assert_ne!(result, AssetPrice::None);
     assert_eq!(
         result,
@@ -105,9 +97,7 @@ fn test() {
         })
     );
 
-    result = client.get_price(&AssetName {
-        name: asset2.clone(),
-    });
+    result = client.get_price(&Identifier::Contract(asset2.clone()));
     assert_ne!(result, AssetPrice::None);
     assert_eq!(
         result,
@@ -118,9 +108,7 @@ fn test() {
     );
 
     //try to get price for unknown asset
-    result = client.get_price(&AssetName {
-        name: BytesN::from_array(&env, &[3; 16]),
-    });
+    result = client.get_price(&Identifier::Contract(BytesN::from_array(&env, &[3; 32])));
     assert_eq!(result, AssetPrice::None);
 }
 
@@ -139,15 +127,11 @@ fn unauthorized() {
     let updates = vec![
         &env,
         AssetPriceUpdate {
-            asset: AssetName {
-                name: asset1.clone(),
-            },
+            asset: Identifier::Contract(asset1),
             price: 100,
         },
         AssetPriceUpdate {
-            asset: AssetName {
-                name: asset2.clone(),
-            },
+            asset: Identifier::Contract(asset2),
             price: 200,
         },
     ];

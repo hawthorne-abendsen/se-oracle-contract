@@ -8,19 +8,13 @@ mod test;
 use soroban_auth::{
     check_auth, NonceAuth, {Identifier, Signature},
 };
-use soroban_sdk::{contractimpl, contracttype, symbol, BigInt, BytesN, Env, Vec, IntoVal, vec};
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AssetName {
-    pub name: BytesN<16>,
-}
+use soroban_sdk::{contractimpl, contracttype, symbol, BigInt, Env, Vec, IntoVal, vec};
 
 #[contracttype]
 pub enum DataKey {
     Admin,
     Nonce(Identifier),
-    Asset(AssetName),
+    Asset(Identifier),
 }
 
 #[contracttype]
@@ -38,9 +32,9 @@ pub struct AssetPriceData {
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct AssetPriceUpdate {
-    pub asset: AssetName,
+    pub asset: Identifier,
     pub price: u64,
 }
 
@@ -133,7 +127,7 @@ impl OracleContract {
     }
 
     //Get the price for an asset.
-    pub fn get_price(e: Env, asset: AssetName) -> AssetPrice {
+    pub fn get_price(e: Env, asset: Identifier) -> AssetPrice {
         //get the current price
         let data = e.contract_data();
         let key = DataKey::Asset(asset);
