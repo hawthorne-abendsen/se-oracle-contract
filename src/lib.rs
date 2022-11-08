@@ -1,19 +1,24 @@
 #![no_std]
 
-#[cfg(feature = "testutils")]
-extern crate std;
-
 mod test;
 
-use soroban_auth::{
-    check_auth, NonceAuth, {Identifier, Signature},
+use soroban_auth::Identifier;
+use soroban_sdk::{
+    contracterror, contractimpl, contracttype, panic_error, Address, BigInt, Env, Vec,
 };
-use soroban_sdk::{contractimpl, contracttype, symbol, BigInt, Env, Vec, IntoVal, vec};
+
+#[contracterror]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Error {
+    IncorrectNonce = 1,
+    Unauthorized = 2,
+    InvalidAddressType = 3,
+}
 
 #[contracttype]
 pub enum DataKey {
     Admin,
-    Nonce(Identifier),
+    Nonce(Address),
     Asset(Identifier),
 }
 
@@ -38,74 +43,88 @@ pub struct AssetPriceUpdate {
     pub price: u64,
 }
 
-fn read_nonce(e: &Env, id: Identifier) -> BigInt {
-    let key = DataKey::Nonce(id);
-    e.contract_data()
+fn verify_and_consume_nonce(env: &Env, invoker: &Address, nonce: &BigInt) {
+    if nonce != &get_nonce(env, &invoker) {
+        panic_error!(env, Error::IncorrectNonce);
+    }
+    set_nonce(env, invoker, nonce + 1);
+}
+
+fn get_nonce(env: &Env, id: &Address) -> BigInt {
+    let key = DataKey::Nonce(id.clone());
+    env.data()
         .get(key)
-        .unwrap_or_else(|| Ok(BigInt::zero(e)))
+        .unwrap_or_else(|| Ok(BigInt::zero(env)))
         .unwrap()
 }
 
-struct NonceForSignature(Signature);
+fn set_nonce(env: &Env, id: &Address, nonce: BigInt) {
+    let key = DataKey::Nonce(id.clone());
+    env.data().set(key, nonce);
+}
 
-impl NonceAuth for NonceForSignature {
-    fn read_nonce(e: &Env, id: Identifier) -> BigInt {
-        read_nonce(e, id)
+fn set_admin(e: &Env, admin: &Address) {
+    match admin {
+        Address::Account(_) => {}
+        Address::Contract(_) => panic_error!(&e, Error::InvalidAddressType),
     }
+    e.data().set(DataKey::Admin, admin);
+}
 
-    fn read_and_increment_nonce(&self, e: &Env, id: Identifier) -> BigInt {
-        let key = DataKey::Nonce(id.clone());
-        let nonce = Self::read_nonce(e, id);
-        e.contract_data().set(key, &nonce + 1);
-        nonce
-    }
+fn is_authorized(e: &Env, invoker: &Address) -> bool {
+    return invoker == &get_admin(&e);
+}
 
-    fn signature(&self) -> &Signature {
-        &self.0
+fn check_authorization(e: &Env, invoker: &Address) {
+    if !is_authorized(&e, &invoker) {
+        panic_error!(&e, Error::Unauthorized);
     }
+}
+
+fn is_initialized(e: &Env) -> bool {
+    e.data().has(DataKey::Admin)
+}
+
+fn get_admin(e: &Env) -> Address {
+    return e.data().get_unchecked(DataKey::Admin).unwrap();
 }
 
 pub struct OracleContract;
 
 #[contractimpl]
 impl OracleContract {
-
-    fn is_initialized(e: &Env) -> bool {
-        e.contract_data().has(DataKey::Admin)
+    //Set the admin identifier.
+    pub fn set_admin(e: Env, admin: Address) {
+        let invoker = e.invoker();
+        if is_initialized(&e) && !is_authorized(&e, &invoker) {
+            panic_error!(&e, Error::Unauthorized);
+        }
+        set_admin(&e, &admin);
     }
 
-    //Set the admin identifier.
-    pub fn init(e: Env, admin: Identifier) {
-        if Self::is_initialized(&e) {
-            panic!("Contract already initialized");
+    pub fn get_admin(e: Env) -> Option<Address> {
+        if !is_initialized(&e) {
+            return None;
         }
-        e.contract_data().set(DataKey::Admin, admin);
+        Some(get_admin(&e))
     }
 
     //Get current admin nonce.
-    pub fn nonce(e: Env, id: Identifier) -> BigInt {
-        read_nonce(&e, id)
+    pub fn nonce(e: Env) -> BigInt {
+        let invoker = e.invoker();
+        get_nonce(&e, &invoker)
     }
 
     // Set prices for assets. Only admin can call this method.
-    pub fn set_price(e: Env, sig: Signature, nonce: BigInt, updates: Vec<AssetPriceUpdate>) {
-        if !Self::is_initialized(&e) {
-            panic!("Not authorized by admin");
-        }
-        let auth_id = sig.get_identifier(&e);
-        if auth_id != e.contract_data()
-            .get_unchecked(DataKey::Admin)
-            .unwrap() {
-            panic!("Not authorized by admin")
+    pub fn set_price(e: Env, nonce: BigInt, updates: Vec<AssetPriceUpdate>) {
+        if !is_initialized(&e) {
+            panic_error!(&e, Error::Unauthorized);
         }
 
-        check_auth(
-            &e,
-            &NonceForSignature(sig),
-            nonce.clone(),
-            symbol!("set_price"),
-            vec![&e, auth_id.into_val(&e), nonce.into_val(&e), updates.clone().into_val(&e)],
-        );
+        let invoker = e.invoker();
+        check_authorization(&e, &invoker);
+
+        verify_and_consume_nonce(&e, &invoker, &nonce);
 
         //iterate over the updates
         for u in updates.iter() {
@@ -116,7 +135,7 @@ impl OracleContract {
             let update = u.ok().unwrap();
 
             //store the new price
-            e.contract_data().set(
+            e.data().set(
                 &DataKey::Asset(update.asset),
                 AssetPrice::AssetPrice(AssetPriceData {
                     price: update.price,
@@ -129,7 +148,7 @@ impl OracleContract {
     //Get the price for an asset.
     pub fn get_price(e: Env, asset: Identifier) -> AssetPrice {
         //get the current price
-        let data = e.contract_data();
+        let data = e.data();
         let key = DataKey::Asset(asset);
         if !data.has(&key) {
             return AssetPrice::None;
