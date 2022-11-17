@@ -4,7 +4,8 @@ mod test;
 
 use soroban_auth::Identifier;
 use soroban_sdk::{
-    contracterror, contractimpl, contracttype, panic_error, Address, BigInt, Env, Vec,
+    contracterror, contractimpl, contracttype, panic_with_error, vec,
+    Address, BigInt, Env, Vec,
 };
 
 #[contracterror]
@@ -24,14 +25,7 @@ pub enum DataKey {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum AssetPrice {
-    None,
-    AssetPrice(AssetPriceData),
-}
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AssetPriceData {
+pub struct AssetPrice {
     pub price: u64,
     pub timestamp: u64,
 }
@@ -45,7 +39,7 @@ pub struct AssetPriceUpdate {
 
 fn verify_and_consume_nonce(env: &Env, invoker: &Address, nonce: &BigInt) {
     if nonce != &get_nonce(env, &invoker) {
-        panic_error!(env, Error::IncorrectNonce);
+        panic_with_error!(env, Error::IncorrectNonce);
     }
     set_nonce(env, invoker, nonce + 1);
 }
@@ -66,7 +60,7 @@ fn set_nonce(env: &Env, id: &Address, nonce: BigInt) {
 fn set_admin(e: &Env, admin: &Address) {
     match admin {
         Address::Account(_) => {}
-        Address::Contract(_) => panic_error!(&e, Error::InvalidAddressType),
+        Address::Contract(_) => panic_with_error!(&e, Error::InvalidAddressType),
     }
     e.data().set(DataKey::Admin, admin);
 }
@@ -77,7 +71,7 @@ fn is_authorized(e: &Env, invoker: &Address) -> bool {
 
 fn check_authorization(e: &Env, invoker: &Address) {
     if !is_authorized(&e, &invoker) {
-        panic_error!(&e, Error::Unauthorized);
+        panic_with_error!(&e, Error::Unauthorized);
     }
 }
 
@@ -97,7 +91,7 @@ impl OracleContract {
     pub fn set_admin(e: Env, admin: Address) {
         let invoker = e.invoker();
         if is_initialized(&e) && !is_authorized(&e, &invoker) {
-            panic_error!(&e, Error::Unauthorized);
+            panic_with_error!(&e, Error::Unauthorized);
         }
         set_admin(&e, &admin);
     }
@@ -118,7 +112,7 @@ impl OracleContract {
     // Set prices for assets. Only admin can call this method.
     pub fn set_price(e: Env, nonce: BigInt, updates: Vec<AssetPriceUpdate>) {
         if !is_initialized(&e) {
-            panic_error!(&e, Error::Unauthorized);
+            panic_with_error!(&e, Error::Unauthorized);
         }
 
         let invoker = e.invoker();
@@ -137,25 +131,24 @@ impl OracleContract {
             //store the new price
             e.data().set(
                 &DataKey::Asset(update.asset),
-                AssetPrice::AssetPrice(AssetPriceData {
+                AssetPrice {
                     price: update.price,
                     timestamp: e.ledger().timestamp(),
-                }),
+                },
             );
         }
     }
 
     //Get the price for an asset.
-    pub fn get_price(e: Env, asset: Identifier) -> AssetPrice {
+    pub fn get_price(e: Env, asset: Identifier) -> Option<Vec<u64>> {
         //get the current price
         let data = e.data();
         let key = DataKey::Asset(asset);
         if !data.has(&key) {
-            return AssetPrice::None;
+            return Option::None;
         }
-        let price_option = data.get_unchecked(&key);
-        let price = price_option.unwrap();
+        let price: AssetPrice = data.get_unchecked(&key).unwrap();
 
-        price
+        Option::Some(vec![&e, price.price, price.timestamp])
     }
 }

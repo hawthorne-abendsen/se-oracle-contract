@@ -24,7 +24,7 @@ fn test() {
 
     //try to get price before initialization
     let result = client.get_price(&Identifier::Contract(asset1.clone()));
-    assert_eq!(result, AssetPrice::None);
+    assert_eq!(result, Option::None);
 
     let updates = vec![
         &env,
@@ -58,28 +58,30 @@ fn test() {
         .set_price(&nonce, &updates);
     //check prices
     let mut result = client.get_price(&Identifier::Contract(asset1.clone()));
-    assert_ne!(result, AssetPrice::None);
+    assert_ne!(result, Option::None);
     assert_eq!(
         result,
-        AssetPrice::AssetPrice(AssetPriceData {
-            price: 100,
-            timestamp: 0,
-        })
+        Option::Some(vec![
+            &env,
+            100,
+            0
+        ])
     );
 
     result = client.get_price(&Identifier::Contract(asset2.clone()));
-    assert_ne!(result, AssetPrice::None);
+    assert_ne!(result, Option::None);
     assert_eq!(
         result,
-        AssetPrice::AssetPrice(AssetPriceData {
-            price: 200,
-            timestamp: 0,
-        })
+        Option::Some(vec![
+            &env,
+            200,
+            0,
+        ])
     );
 
     //try to get price for unknown asset
     result = client.get_price(&Identifier::Contract(BytesN::from_array(&env, &[3; 32])));
-    assert_eq!(result, AssetPrice::None);
+    assert_eq!(result, Option::None);
 }
 
 #[test]
