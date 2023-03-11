@@ -1,21 +1,20 @@
 [package]
 name = "se-oracle-contract"
-version = "0.1.2"
+version = "0.3.0"
 edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [features]
-testutils = ["soroban-sdk/testutils", "soroban-auth/testutils"]
+testutils = ["soroban-sdk/testutils"]
 
 [dependencies]
-soroban-sdk = "0.2.1"
-soroban-auth = "0.2.1"
+soroban-sdk = "0.6.0"
+soroban-auth = "0.6.0"
 
 [dev_dependencies]
-soroban-sdk = { version = "0.2.1", features = ["testutils"] }
-soroban-auth = { version = "0.2.1", features = ["testutils"] }
+soroban-sdk = { version = "0.6.0", features = ["testutils"] }
 
 [profile.release]
 opt-level = "z"

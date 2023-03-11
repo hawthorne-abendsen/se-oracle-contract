@@ -2,153 +2,293 @@
 
 mod test;
 
-use soroban_auth::Identifier;
-use soroban_sdk::{
-    contracterror, contractimpl, contracttype, panic_with_error, vec,
-    Address, BigInt, Env, Vec,
+mod extensions;
+mod types;
+
+use extensions::env_extensions::EnvExtensions;
+use extensions::u64_extensions::U64Extensions;
+use soroban_sdk::{contractimpl, panic_with_error, Address, Env, Vec};
+use types::{
+    asset_price_key::AssetPriceKey, data_key::DataKey, error::Error, price_data::PriceData,
 };
-
-#[contracterror]
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Error {
-    IncorrectNonce = 1,
-    Unauthorized = 2,
-    InvalidAddressType = 3,
-}
-
-#[contracttype]
-pub enum DataKey {
-    Admin,
-    Nonce(Address),
-    Asset(Identifier),
-}
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AssetPrice {
-    pub price: u64,
-    pub timestamp: u64,
-}
-
-#[contracttype]
-#[derive(Clone, PartialEq)]
-pub struct AssetPriceUpdate {
-    pub asset: Identifier,
-    pub price: u64,
-}
-
-fn verify_and_consume_nonce(env: &Env, invoker: &Address, nonce: &BigInt) {
-    if nonce != &get_nonce(env, &invoker) {
-        panic_with_error!(env, Error::IncorrectNonce);
-    }
-    set_nonce(env, invoker, nonce + 1);
-}
-
-fn get_nonce(env: &Env, id: &Address) -> BigInt {
-    let key = DataKey::Nonce(id.clone());
-    env.data()
-        .get(key)
-        .unwrap_or_else(|| Ok(BigInt::zero(env)))
-        .unwrap()
-}
-
-fn set_nonce(env: &Env, id: &Address, nonce: BigInt) {
-    let key = DataKey::Nonce(id.clone());
-    env.data().set(key, nonce);
-}
-
-fn set_admin(e: &Env, admin: &Address) {
-    match admin {
-        Address::Account(_) => {}
-        Address::Contract(_) => panic_with_error!(&e, Error::InvalidAddressType),
-    }
-    e.data().set(DataKey::Admin, admin);
-}
-
-fn is_authorized(e: &Env, invoker: &Address) -> bool {
-    return invoker == &get_admin(&e);
-}
-
-fn check_authorization(e: &Env, invoker: &Address) {
-    if !is_authorized(&e, &invoker) {
-        panic_with_error!(&e, Error::Unauthorized);
-    }
-}
-
-fn is_initialized(e: &Env) -> bool {
-    e.data().has(DataKey::Admin)
-}
-
-fn get_admin(e: &Env) -> Address {
-    return e.data().get_unchecked(DataKey::Admin).unwrap();
-}
-
 pub struct OracleContract;
 
 #[contractimpl]
 impl OracleContract {
+    //Admin section
+
     //Set the admin identifier.
-    pub fn set_admin(e: Env, admin: Address) {
-        let invoker = e.invoker();
-        if is_initialized(&e) && !is_authorized(&e, &invoker) {
+    pub fn set_admin(e: Env, user: Address, admin: Address) {
+        user.require_auth();
+        if e.is_initialized() && !e.is_authorized(&user) {
             panic_with_error!(&e, Error::Unauthorized);
         }
-        set_admin(&e, &admin);
+        e.set_admin(&admin);
     }
 
-    pub fn get_admin(e: Env) -> Option<Address> {
-        if !is_initialized(&e) {
-            return None;
+    pub fn set_base(e: Env, user: Address, base: Address) {
+        panic_if_not_authorized(&e, &user);
+
+        e.set_base(base);
+    }
+
+    pub fn set_dcmals(e: Env, user: Address, decimals: u32) {
+        panic_if_not_authorized(&e, &user);
+
+        e.set_decimals(decimals);
+    }
+
+    pub fn set_prd(e: Env, user: Address, period: u64) {
+        panic_if_not_authorized(&e, &user);
+
+        e.set_rdm_period(period);
+    }
+
+    pub fn set_rsltn(e: Env, user: Address, timeframe: u32) {
+        panic_if_not_authorized(&e, &user);
+
+        e.set_resolution(timeframe);
+    }
+
+    pub fn add_assets(e: Env, user: Address, assets: Vec<Address>) {
+        panic_if_not_authorized(&e, &user);
+
+        let mut presented_assets = e.get_assets();
+
+        for asset in assets.iter() {
+            let asset = asset.unwrap();
+            //check if the asset is already added
+            if is_asset_added(&presented_assets, &asset) {
+                panic_with_error!(&e, Error::AssetAlreadyAdded);
+            }
+            presented_assets.push_back(asset);
         }
-        Some(get_admin(&e))
+
+        e.set_assets(presented_assets);
     }
 
-    //Get current admin nonce.
-    pub fn nonce(e: Env) -> BigInt {
-        let invoker = e.invoker();
-        get_nonce(&e, &invoker)
-    }
+    pub fn set_price(e: Env, user: Address, updates: Vec<i128>, timestamp: u64) {
+        panic_if_not_authorized(&e, &user);
 
-    // Set prices for assets. Only admin can call this method.
-    pub fn set_price(e: Env, nonce: BigInt, updates: Vec<AssetPriceUpdate>) {
-        if !is_initialized(&e) {
-            panic_with_error!(&e, Error::Unauthorized);
+        let assets = e.get_assets();
+        let assets_len = assets.len();
+
+        if assets_len == 0 {
+            panic_with_error!(&e, Error::NoAssetsFound);
         }
 
-        let invoker = e.invoker();
-        check_authorization(&e, &invoker);
-
-        verify_and_consume_nonce(&e, &invoker, &nonce);
+        if updates.len() != assets_len {
+            panic_with_error!(&e, Error::InvalidUpdatesLength);
+        }
 
         //iterate over the updates
-        for u in updates.iter() {
-            if !u.is_ok() {
-                //TODO: log error
-                continue;
+        for (i, price) in updates.iter().enumerate() {
+            if !price.is_ok() {
+                panic_with_error!(&e, Error::InvalidUpdate);
             }
-            let update = u.ok().unwrap();
-
+            let asset = assets.get_unchecked(i as u32).unwrap();
             //store the new price
-            e.data().set(
-                &DataKey::Asset(update.asset),
-                AssetPrice {
-                    price: update.price,
-                    timestamp: e.ledger().timestamp(),
-                },
+            e.storage().set(
+                &DataKey::Price(AssetPriceKey { asset, timestamp }),
+                &price.ok().unwrap(),
             );
         }
+
+        //get the last timestamp
+        let last_timestamp = e.get_last_timestamp();
+        if last_timestamp.is_none() || timestamp > last_timestamp.unwrap() {
+            e.set_last_timestamp(timestamp);
+        }
+    }
+
+    //end of admin section
+
+    pub fn admin(e: Env) -> Option<Address> {
+        return e.get_admin();
+    }
+
+    pub fn base(e: Env) -> Option<Address> {
+        return e.get_base();
+    }
+
+    pub fn decimals(e: Env) -> Option<u32> {
+        e.get_decimals()
+    }
+
+    pub fn period(e: Env) -> Option<u64> {
+        e.get_rdm_period()
+    }
+
+    pub fn assets(e: Env) -> Option<Vec<Address>> {
+        let assets = e.get_assets();
+        if assets.len() == 0 {
+            return None;
+        }
+        Some(assets)
+    }
+
+    pub fn resolution(e: Env) -> Option<u32> {
+        let resolution = e.get_resolution();
+        if resolution.is_none() {
+            return None;
+        }
+        //return resolution in seconds
+        Some(resolution.unwrap() / 1000)
+    }
+
+    pub fn price(e: Env, asset: Address, timestamp: u64) -> Option<PriceData> {
+        let resolution = e.get_resolution();
+        if resolution.is_none() {
+            return None;
+        }
+        let normalized_timestamp = timestamp.get_normalized_timestamp(resolution.unwrap().into());
+
+        //get the price
+        let price = e.get_price(asset, normalized_timestamp);
+
+        if price.is_none() {
+            return None;
+        }
+
+        Some(PriceData {
+            price: price.unwrap(),
+            timestamp: normalized_timestamp,
+        })
     }
 
     //Get the price for an asset.
-    pub fn get_price(e: Env, asset: Identifier) -> Option<Vec<u64>> {
-        //get the current price
-        let data = e.data();
-        let key = DataKey::Asset(asset);
-        if !data.has(&key) {
+    pub fn lastprice(e: Env, asset: Address) -> Option<PriceData> {
+        //get the last timestamp
+        let timestamp = e.get_last_timestamp().unwrap_or(0);
+        if timestamp == 0 {
+            return None;
+        }
+
+        //get the price
+        let price = e.get_price(asset, timestamp);
+        if price.is_none() {
+            return None;
+        }
+
+        Some(PriceData {
+            price: price.unwrap(),
+            timestamp,
+        })
+    }
+
+    pub fn x_price(
+        e: Env,
+        base_asset: Address,
+        quote_asset: Address,
+        timestamp: u64,
+    ) -> Option<PriceData> {
+        verify_pair(&e, &base_asset, &quote_asset);
+
+        let resolution = e.get_resolution();
+        if resolution.is_none() {
+            return None;
+        }
+
+        let normalized_timestamp = timestamp.get_normalized_timestamp(resolution.unwrap().into());
+
+        let price = e.get_x_price(base_asset, quote_asset, normalized_timestamp);
+
+        if price.is_none() {
+            return None;
+        }
+
+        Some(PriceData {
+            price: price.unwrap(),
+            timestamp: normalized_timestamp,
+        })
+    }
+
+    pub fn x_lt_price(e: Env, base_asset: Address, quote_asset: Address) -> Option<PriceData> {
+        verify_pair(&e, &base_asset, &quote_asset);
+
+        let timestamp = e.get_last_timestamp().unwrap_or(0);
+        if timestamp == 0 {
+            return None;
+        }
+        let price = e.get_x_price(base_asset, quote_asset, timestamp);
+
+        if price.is_none() {
+            return None;
+        }
+
+        Some(PriceData {
+            price: price.unwrap(),
+            timestamp,
+        })
+    }
+
+    pub fn prices(e: Env, asset: Address, records: u32) -> Option<Vec<PriceData>> {
+        e.get_prices(asset, records)
+    }
+
+    pub fn x_prices(
+        e: Env,
+        base_asset: Address,
+        quote_asset: Address,
+        records: u32,
+    ) -> Option<Vec<PriceData>> {
+        e.get_x_prices(base_asset, quote_asset, records)
+    }
+
+    pub fn twap(e: Env, asset: Address, records: u32) -> Option<i128> {
+        let prices_result = e.get_prices(asset, records);
+        if prices_result.is_none() {
             return Option::None;
         }
-        let price: AssetPrice = data.get_unchecked(&key).unwrap();
 
-        Option::Some(vec![&e, price.price, price.timestamp])
+        let prices = prices_result.unwrap();
+
+        let mut sum = 0;
+        for price in prices.iter() {
+            let price_data = price.unwrap();
+            sum += price_data.price;
+        }
+
+        Some(sum / (prices.len() as i128))
     }
+
+    pub fn x_twap(e: Env, base_asset: Address, quote_asset: Address, records: u32) -> Option<i128> {
+        let prices_result = e.get_x_prices(base_asset, quote_asset, records);
+        if prices_result.is_none() {
+            return Option::None;
+        }
+
+        let prices = prices_result.unwrap();
+
+        let mut sum = 0;
+        for price in prices.iter() {
+            let price_data = price.unwrap();
+            sum += price_data.price;
+        }
+
+        Some(sum / (prices.len() as i128))
+    }
+}
+
+fn panic_if_not_authorized(e: &Env, invoker: &Address) {
+    if !e.is_authorized(invoker) {
+        panic_with_error!(e, Error::Unauthorized);
+    }
+}
+
+fn verify_pair(e: &Env, base_asset: &Address, quote_asset: &Address) {
+    //check if the asset are the same
+    if base_asset == quote_asset {
+        panic_with_error!(e, Error::InvalidAssetPair);
+    }
+}
+
+fn is_asset_added(assets: &Vec<Address>, asset: &Address) -> bool {
+    for a in assets.iter() {
+        let a = a.unwrap();
+        if &a == asset {
+            return true;
+        }
+    }
+    false
 }
