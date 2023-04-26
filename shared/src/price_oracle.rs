@@ -1,65 +1,32 @@
-#![no_std]
+use soroban_sdk::{ Env, Address, panic_with_error, Vec, BytesN };
+use crate::constants::Constants;
+use crate::extensions::{env_extensions::EnvExtensions, u64_extensions::U64Extensions};
+use crate::types::{ config_data::ConfigData, error::Error, price_data::PriceData };
 
-mod test;
+pub struct PriceOracle;
 
-mod extensions;
-mod types;
-
-use extensions::env_extensions::EnvExtensions;
-use extensions::u64_extensions::U64Extensions;
-use soroban_sdk::{contractimpl, panic_with_error, Address, Env, Vec};
-use types::{
-    asset_price_key::AssetPriceKey, data_key::DataKey, error::Error, price_data::PriceData,
-};
-pub struct OracleContract;
-
-#[contractimpl]
-impl OracleContract {
+impl PriceOracle {
     //Admin section
 
-    //Set the admin identifier.
-    pub fn set_admin(e: Env, user: Address, admin: Address) {
-        user.require_auth();
-        if e.is_initialized() && !e.is_authorized(&user) {
-            panic_with_error!(&e, Error::Unauthorized);
-        }
-        e.set_admin(&admin);
+    pub fn config(e: &Env, user: Address, config: ConfigData) {
+        e.panic_if_not_admin(&user);
+
+        e.set_admin(&config.admin);
+        //TODO: check if need to remove old prices
+        e.set_redemption_period(config.period);
+        e.set_assets(config.assets);
     }
 
-    pub fn set_base(e: Env, user: Address, base: Address) {
-        panic_if_not_authorized(&e, &user);
-
-        e.set_base(base);
-    }
-
-    pub fn set_dcmals(e: Env, user: Address, decimals: u32) {
-        panic_if_not_authorized(&e, &user);
-
-        e.set_decimals(decimals);
-    }
-
-    pub fn set_prd(e: Env, user: Address, period: u64) {
-        panic_if_not_authorized(&e, &user);
-
-        e.set_rdm_period(period);
-    }
-
-    pub fn set_rsltn(e: Env, user: Address, timeframe: u32) {
-        panic_if_not_authorized(&e, &user);
-
-        e.set_resolution(timeframe);
-    }
-
-    pub fn add_assets(e: Env, user: Address, assets: Vec<Address>) {
-        panic_if_not_authorized(&e, &user);
+    pub fn add_assets(e: &Env, user: Address, assets: Vec<Address>) {
+        e.panic_if_not_admin(&user);
 
         let mut presented_assets = e.get_assets();
 
         for asset in assets.iter() {
             let asset = asset.unwrap();
             //check if the asset is already added
-            if is_asset_added(&presented_assets, &asset) {
-                panic_with_error!(&e, Error::AssetAlreadyAdded);
+            if is_asset_presented(&presented_assets, &asset) {
+                panic_with_error!(&e, Error::AssetAlreadyPresented);
             }
             presented_assets.push_back(asset);
         }
@@ -67,35 +34,51 @@ impl OracleContract {
         e.set_assets(presented_assets);
     }
 
-    pub fn set_price(e: Env, user: Address, updates: Vec<i128>, timestamp: u64) {
-        panic_if_not_authorized(&e, &user);
+    pub fn set_price(e: &Env, user: Address, updates: Vec<i128>, timestamp: u64) {
+        e.panic_if_not_admin(&user);
 
         let assets = e.get_assets();
         let assets_len = assets.len();
-
-        if assets_len == 0 {
-            panic_with_error!(&e, Error::NoAssetsFound);
-        }
 
         if updates.len() != assets_len {
             panic_with_error!(&e, Error::InvalidUpdatesLength);
         }
 
-        //iterate over the updates
-        for (i, price) in updates.iter().enumerate() {
-            if !price.is_ok() {
-                panic_with_error!(&e, Error::InvalidUpdate);
-            }
-            let asset = assets.get_unchecked(i as u32).unwrap();
-            //store the new price
-            e.storage().set(
-                &DataKey::Price(AssetPriceKey { asset, timestamp }),
-                &price.ok().unwrap(),
-            );
-        }
+        let resolution = Constants::RESOLUTION;
+
+        let redemption_period = e.get_redemption_period().unwrap();
 
         //get the last timestamp
         let last_timestamp = e.get_last_timestamp();
+
+        let prev_timestamp = timestamp - (resolution as u64);
+
+        //iterate over the updates
+        for (i, price_data) in updates.iter().enumerate() {
+            if !price_data.is_ok() {
+                panic_with_error!(&e, Error::InvalidPriceValue);
+            }
+
+            let asset = assets.get_unchecked(i as u32).unwrap();
+
+            let mut price = price_data.ok().unwrap();
+            if price == 0 {
+                if last_timestamp.is_none() {
+                    panic_with_error!(&e, Error::NoPrevPrice);
+                }
+                //try to get previous price
+                let prev_price = e.get_price(asset.clone(), prev_timestamp);
+                if prev_price.is_none() {
+                    panic_with_error!(&e, Error::NoPrevPrice);
+                }
+                price = prev_price.unwrap();
+            }
+            //store the new price
+            e.set_price(asset.clone(), price, timestamp);
+
+            //remove the old price
+            e.try_delete_old_price(asset, timestamp, redemption_period);
+        }
         if last_timestamp.is_none() || timestamp > last_timestamp.unwrap() {
             e.set_last_timestamp(timestamp);
         }
@@ -103,23 +86,29 @@ impl OracleContract {
 
     //end of admin section
 
-    pub fn admin(e: Env) -> Option<Address> {
-        return e.get_admin();
+    pub fn admin(e: &Env) -> Address {
+        e.get_admin()
     }
 
-    pub fn base(e: Env) -> Option<Address> {
-        return e.get_base();
+    pub fn base(e: &Env) -> Address {
+        let bytes = BytesN::from_array(&e, &Constants::BASE);
+        Address::from_contract_id(&e, &bytes)
     }
 
-    pub fn decimals(e: Env) -> Option<u32> {
-        e.get_decimals()
+    pub fn decimals(_e: &Env) -> u32 {
+        Constants::DECIMALS
     }
 
-    pub fn period(e: Env) -> Option<u64> {
-        e.get_rdm_period()
+    pub fn resolution(_e: &Env) -> u32 {
+        //return resolution in seconds
+        Constants::RESOLUTION / 1000
     }
 
-    pub fn assets(e: Env) -> Option<Vec<Address>> {
+    pub fn period(e: &Env) -> Option<u64> {
+        e.get_redemption_period()
+    }
+
+    pub fn assets(e: &Env) -> Option<Vec<Address>> {
         let assets = e.get_assets();
         if assets.len() == 0 {
             return None;
@@ -127,21 +116,8 @@ impl OracleContract {
         Some(assets)
     }
 
-    pub fn resolution(e: Env) -> Option<u32> {
-        let resolution = e.get_resolution();
-        if resolution.is_none() {
-            return None;
-        }
-        //return resolution in seconds
-        Some(resolution.unwrap() / 1000)
-    }
-
-    pub fn price(e: Env, asset: Address, timestamp: u64) -> Option<PriceData> {
-        let resolution = e.get_resolution();
-        if resolution.is_none() {
-            return None;
-        }
-        let normalized_timestamp = timestamp.get_normalized_timestamp(resolution.unwrap().into());
+    pub fn price(e: &Env, asset: Address, timestamp: u64) -> Option<PriceData> {
+        let normalized_timestamp = timestamp.get_normalized_timestamp(Constants::RESOLUTION.into());
 
         //get the price
         let price = e.get_price(asset, normalized_timestamp);
@@ -157,7 +133,7 @@ impl OracleContract {
     }
 
     //Get the price for an asset.
-    pub fn lastprice(e: Env, asset: Address) -> Option<PriceData> {
+    pub fn lastprice(e: &Env, asset: Address) -> Option<PriceData> {
         //get the last timestamp
         let timestamp = e.get_last_timestamp().unwrap_or(0);
         if timestamp == 0 {
@@ -177,19 +153,14 @@ impl OracleContract {
     }
 
     pub fn x_price(
-        e: Env,
+        e: &Env,
         base_asset: Address,
         quote_asset: Address,
         timestamp: u64,
     ) -> Option<PriceData> {
         verify_pair(&e, &base_asset, &quote_asset);
 
-        let resolution = e.get_resolution();
-        if resolution.is_none() {
-            return None;
-        }
-
-        let normalized_timestamp = timestamp.get_normalized_timestamp(resolution.unwrap().into());
+        let normalized_timestamp = timestamp.get_normalized_timestamp(Constants::RESOLUTION.into());
 
         let price = e.get_x_price(base_asset, quote_asset, normalized_timestamp);
 
@@ -203,7 +174,7 @@ impl OracleContract {
         })
     }
 
-    pub fn x_lt_price(e: Env, base_asset: Address, quote_asset: Address) -> Option<PriceData> {
+    pub fn x_lt_price(e: &Env, base_asset: Address, quote_asset: Address) -> Option<PriceData> {
         verify_pair(&e, &base_asset, &quote_asset);
 
         let timestamp = e.get_last_timestamp().unwrap_or(0);
@@ -222,12 +193,12 @@ impl OracleContract {
         })
     }
 
-    pub fn prices(e: Env, asset: Address, records: u32) -> Option<Vec<PriceData>> {
+    pub fn prices(e: &Env, asset: Address, records: u32) -> Option<Vec<PriceData>> {
         e.get_prices(asset, records)
     }
 
     pub fn x_prices(
-        e: Env,
+        e: &Env,
         base_asset: Address,
         quote_asset: Address,
         records: u32,
@@ -235,7 +206,7 @@ impl OracleContract {
         e.get_x_prices(base_asset, quote_asset, records)
     }
 
-    pub fn twap(e: Env, asset: Address, records: u32) -> Option<i128> {
+    pub fn twap(e: &Env, asset: Address, records: u32) -> Option<i128> {
         let prices_result = e.get_prices(asset, records);
         if prices_result.is_none() {
             return Option::None;
@@ -252,7 +223,7 @@ impl OracleContract {
         Some(sum / (prices.len() as i128))
     }
 
-    pub fn x_twap(e: Env, base_asset: Address, quote_asset: Address, records: u32) -> Option<i128> {
+    pub fn x_twap(e: &Env, base_asset: Address, quote_asset: Address, records: u32) -> Option<i128> {
         let prices_result = e.get_x_prices(base_asset, quote_asset, records);
         if prices_result.is_none() {
             return Option::None;
@@ -270,12 +241,6 @@ impl OracleContract {
     }
 }
 
-fn panic_if_not_authorized(e: &Env, invoker: &Address) {
-    if !e.is_authorized(invoker) {
-        panic_with_error!(e, Error::Unauthorized);
-    }
-}
-
 fn verify_pair(e: &Env, base_asset: &Address, quote_asset: &Address) {
     //check if the asset are the same
     if base_asset == quote_asset {
@@ -283,7 +248,7 @@ fn verify_pair(e: &Env, base_asset: &Address, quote_asset: &Address) {
     }
 }
 
-fn is_asset_added(assets: &Vec<Address>, asset: &Address) -> bool {
+fn is_asset_presented(assets: &Vec<Address>, asset: &Address) -> bool {
     for a in assets.iter() {
         let a = a.unwrap();
         if &a == asset {

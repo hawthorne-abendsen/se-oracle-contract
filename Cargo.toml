@@ -1,20 +1,11 @@
-[package]
-name = "se-oracle-contract"
-version = "0.3.0"
-edition = "2021"
+[workspace]
+resolver = "2"
 
-[lib]
-crate-type = ["cdylib", "rlib"]
+members = ["shared", "price-oracle", "price-oracle-plus"]
 
-[features]
-testutils = ["soroban-sdk/testutils"]
-
-[dependencies]
-soroban-sdk = "0.6.0"
-soroban-auth = "0.6.0"
-
-[dev_dependencies]
-soroban-sdk = { version = "0.6.0", features = ["testutils"] }
+[profile.release-with-logs]
+inherits = "release"
+debug-assertions = true
 
 [profile.release]
 opt-level = "z"
@@ -25,3 +16,15 @@ debug-assertions = false
 panic = "abort"
 codegen-units = 1
 lto = true
+
+[workspace.dependencies.soroban-sdk]
+version = "0.7.0"
+
+[workspace.dependencies.soroban-auth]
+version = "0.7.0"
+
+[workspace.dependencies.hex]
+version = "0.4.3"
+
+[workspace.dependencies.stellar-strkey]
+version = "0.0.7"

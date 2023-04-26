@@ -1,27 +1,23 @@
-use soroban_sdk::{panic_with_error, Address, Env, Vec};
+use soroban_sdk::{panic_with_error, Address, BytesN, Env, Vec};
 
+use crate::constants;
+use crate::extensions;
 use crate::types;
 
+use constants::Constants;
+use extensions::i128_extensions::I128Extensions;
 use types::{
     asset_price_key::AssetPriceKey, data_key::DataKey, error::Error, price_data::PriceData,
 };
-
-use super::i128_extensions;
-
-use i128_extensions::I128Extensions;
 
 pub trait EnvExtensions {
     fn is_authorized(&self, invoker: &Address) -> bool;
 
     fn is_initialized(&self) -> bool;
 
-    fn get_admin(&self) -> Option<Address>;
+    fn get_admin(&self) -> Address;
 
     fn set_admin(&self, admin: &Address);
-
-    fn get_base(&self) -> Option<Address>;
-
-    fn set_base(&self, base: Address);
 
     fn get_price(&self, asset: Address, timestamp: u64) -> Option<i128>;
 
@@ -31,17 +27,9 @@ pub trait EnvExtensions {
 
     fn set_last_timestamp(&self, timestamp: u64);
 
-    fn get_decimals(&self) -> Option<u32>;
+    fn get_redemption_period(&self) -> Option<u64>;
 
-    fn set_decimals(&self, decimals: u32);
-
-    fn get_rdm_period(&self) -> Option<u64>;
-
-    fn set_rdm_period(&self, period: u64);
-
-    fn get_resolution(&self) -> Option<u32>;
-
-    fn set_resolution(&self, resolution: u32);
+    fn set_redemption_period(&self, period: u64);
 
     fn get_assets(&self) -> Vec<Address>;
 
@@ -49,56 +37,55 @@ pub trait EnvExtensions {
 
     fn get_prices(&self, asset: Address, rounds: u32) -> Option<Vec<PriceData>>;
 
-    fn get_x_price(&self, base_asset: Address, quote_asset: Address, timestamp: u64)
-        -> Option<i128>;
+    fn get_x_price(
+        &self,
+        base_asset: Address,
+        quote_asset: Address,
+        timestamp: u64,
+    ) -> Option<i128>;
 
     fn get_x_prices(
-        self,
+        &self,
         base_asset: Address,
         quote_asset: Address,
         rounds: u32,
     ) -> Option<Vec<PriceData>>;
+
+    fn invoker(&self) -> Option<BytesN<32>>;
+
+    fn try_delete_data(&self, key: DataKey) -> bool;
+
+    fn try_delete_old_price(&self, asset: Address, timestamp: u64, period: u64) -> bool;
+
+    fn panic_if_not_admin(&self, invoker: &Address);
 }
 
 impl EnvExtensions for Env {
-
+    
+    #[allow(unreachable_code)]
     fn is_authorized(&self, invoker: &Address) -> bool {
         invoker.require_auth();
 
         //invoke get_admin to check if the admin is set
         let admin = self.get_admin();
-        if admin.is_none() {
-            return false;
-        }
-        invoker == &admin.unwrap()
+        invoker == &admin
     }
 
     fn is_initialized(&self) -> bool {
         self.storage().has(&DataKey::Admin)
     }
 
-    fn get_admin(&self) -> Option<Address> {
+    fn get_admin(&self) -> Address {
         if !self.storage().has(&DataKey::Admin) {
-            return None;
+            //return the default admin if the admin is not set
+            let bytes = BytesN::from_array(&self, &Constants::ADMIN);
+            return Address::from_account_id(&self, &bytes);
         }
-        let admin = self.storage().get_unchecked(&DataKey::Admin).unwrap();
-        Some(admin)
+        self.storage().get_unchecked(&DataKey::Admin).unwrap()
     }
 
     fn set_admin(&self, admin: &Address) {
         self.storage().set(&DataKey::Admin, admin);
-    }
-
-    fn get_base(&self) -> Option<Address> {
-        if !self.storage().has(&DataKey::Base) {
-            return None;
-        }
-        let base = self.storage().get_unchecked(&DataKey::Base).unwrap();
-        Some(base)
-    }
-
-    fn set_base(&self, base: Address) {
-        self.storage().set(&DataKey::Base, &base);
     }
 
     fn get_price(&self, asset: Address, timestamp: u64) -> Option<i128> {
@@ -107,16 +94,19 @@ impl EnvExtensions for Env {
 
         //check if the price is available
         if !self.storage().has(&data_key) {
-            return Option::None;
+            return None;
         }
 
         //get the price
-        Option::Some(self.storage().get_unchecked(&data_key).unwrap())
+        Some(self.storage().get_unchecked(&data_key).unwrap())
     }
 
     fn set_price(&self, asset: Address, price: i128, timestamp: u64) {
         //build the key for the price
-        let data_key = DataKey::Price(AssetPriceKey { asset, timestamp });
+        let data_key = DataKey::Price(AssetPriceKey {
+            asset: asset.clone(),
+            timestamp,
+        });
 
         //set the price
         self.storage().set(&data_key, &price);
@@ -125,15 +115,26 @@ impl EnvExtensions for Env {
     fn get_last_timestamp(&self) -> Option<u64> {
         //check if the marker is available
         if !self.storage().has(&DataKey::Timestamp) {
-            return Option::None;
+            return None;
         }
 
         //get the marker
-        Option::Some(self.storage().get_unchecked(&DataKey::Timestamp).unwrap())
+        Some(self.storage().get_unchecked(&DataKey::Timestamp).unwrap())
     }
 
     fn set_last_timestamp(&self, timestamp: u64) {
         self.storage().set(&DataKey::Timestamp, &timestamp);
+    }
+
+    fn get_redemption_period(&self) -> Option<u64> {
+        if !self.storage().has(&DataKey::RdmPeriod) {
+            return None;
+        }
+        Some(self.storage().get_unchecked(&DataKey::RdmPeriod).unwrap())
+    }
+
+    fn set_redemption_period(&self, rdm_period: u64) {
+        self.storage().set(&DataKey::RdmPeriod, &rdm_period);
     }
 
     fn get_assets(&self) -> Vec<Address> {
@@ -148,94 +149,75 @@ impl EnvExtensions for Env {
         self.storage().set(&DataKey::Assets, &assets);
     }
 
+    fn get_prices(&self, asset: Address, rounds: u32) -> Option<Vec<PriceData>> {
+        prices(
+            &self,
+            |timestamp| self.get_price(asset.clone(), timestamp),
+            rounds,
+        )
+    }
+
     fn get_x_price(
         &self,
         base_asset: Address,
         quote_asset: Address,
         timestamp: u64,
     ) -> Option<i128> {
-        //get decimals
-        let decimals = self.get_decimals();
-        if decimals.is_none() {
-            return Option::None;
-        }
-
-        get_x_price(&self, &base_asset, &quote_asset, timestamp, decimals.unwrap())
-    }
-
-    fn get_prices(&self, asset: Address, rounds: u32) -> Option<Vec<PriceData>> {
-        let timeframe = self.get_resolution();
-        if timeframe.is_none() {
-            return Option::None;
-        }
-
-        let decimals = self.get_decimals();
-        if decimals.is_none() {
-            return Option::None;
-        }
-        prices(
-            &self,
-            |timestamp| self.get_price(asset.clone(), timestamp),
-            rounds,
-            timeframe.unwrap().into(),
-        )
+        get_x_price(&self, &base_asset, &quote_asset, timestamp)
     }
 
     fn get_x_prices(
-        self,
+        &self,
         base_asset: Address,
         quote_asset: Address,
         rounds: u32,
     ) -> Option<Vec<PriceData>> {
-        let timeframe = self.get_resolution();
-        if timeframe.is_none() {
-            return Option::None;
-        }
-
-        let decimals = self.get_decimals();
-        if decimals.is_none() {
-            return Option::None;
-        }
-
         prices(
-            &self,
-            |timestamp| get_x_price(&self, &base_asset, &quote_asset, timestamp, decimals.unwrap()),
+            self,
+            |timestamp| get_x_price(&self, &base_asset, &quote_asset, timestamp),
             rounds,
-            timeframe.unwrap().into(),
         )
     }
 
-    fn get_decimals(&self) -> Option<u32> {
-        if !self.storage().has(&DataKey::Decimals) {
-            return Option::None;
+    fn invoker(&self) -> Option<BytesN<32>> {
+        let last_invoker = self.call_stack().first();
+        if last_invoker.is_none() {
+            return None;
         }
-        Option::Some(self.storage().get_unchecked(&DataKey::Decimals).unwrap())
-    }
-
-    fn set_decimals(&self, decimals: u32) {
-        self.storage().set(&DataKey::Decimals, &decimals);
-    }
-
-    fn get_rdm_period(&self) -> Option<u64> {
-        if !self.storage().has(&DataKey::RdmPeriod) {
-            return Option::None;
+        let unwraped = last_invoker.unwrap();
+        if !unwraped.is_ok() {
+            return None;
         }
-        Option::Some(self.storage().get_unchecked(&DataKey::RdmPeriod).unwrap())
+        Some(unwraped.ok().unwrap().0)
     }
 
-    fn set_rdm_period(&self, rdm_period: u64) {
-        self.storage().set(&DataKey::RdmPeriod, &rdm_period);
-    }
-
-    fn get_resolution(&self) -> Option<u32> {
-        if !self.storage().has(&DataKey::Resolution) {
-            return Option::None;
+    fn try_delete_data(&self, key: DataKey) -> bool {
+        if !self.storage().has(&key) {
+            return false;
         }
-        Option::Some(self.storage().get_unchecked(&DataKey::Resolution).unwrap())
+        self.storage().remove(&key);
+        true
     }
 
-    fn set_resolution(&self, resolution: u32) {
-        self.storage().set(&DataKey::Resolution, &resolution);
+    fn try_delete_old_price(&self, asset: Address, timestamp: u64, period: u64) -> bool {
+        if timestamp < period {
+            return false;
+        }
+        let data_key = DataKey::Price(AssetPriceKey {
+            asset,
+            timestamp: timestamp - period,
+        });
+        if !self.storage().has(&data_key) {
+            return false;
+        }
+        self.storage().remove(&data_key);
+        true
+    }
+
+    fn panic_if_not_admin(&self, invoker: &Address) {
+        if !self.is_authorized(invoker) {
+            panic_with_error!(self, Error::Unauthorized);
+        }
     }
 }
 
@@ -243,7 +225,6 @@ fn prices<F: Fn(u64) -> Option<i128>>(
     e: &Env,
     get_price_fn: F,
     rounds: u32,
-    timeframe: u64,
 ) -> Option<Vec<PriceData>> {
     //check if the asset is valid
     let mut timestamp = e.get_last_timestamp().unwrap_or(0);
@@ -252,6 +233,7 @@ fn prices<F: Fn(u64) -> Option<i128>>(
     }
 
     let mut prices = Vec::new(&e);
+    let resolution = Constants::RESOLUTION as u64;
 
     for _ in 0..rounds {
         let price = get_price_fn(timestamp);
@@ -263,11 +245,11 @@ fn prices<F: Fn(u64) -> Option<i128>>(
             price: price.unwrap(),
             timestamp,
         });
-        timestamp -= timeframe;
+        timestamp -= resolution;
     }
 
     if prices.len() == 0 {
-        return Option::None;
+        return None;
     }
 
     Some(prices)
@@ -278,7 +260,6 @@ fn get_x_price(
     base_asset: &Address,
     quote_asset: &Address,
     timestamp: u64,
-    decimals: u32,
 ) -> Option<i128> {
     //check if the asset are the same
     if base_asset == quote_asset {
@@ -288,19 +269,19 @@ fn get_x_price(
     //get the price for base_asset
     let base_asset_price = e.get_price(base_asset.clone(), timestamp);
     if base_asset_price.is_none() {
-        return Option::None;
+        return None;
     }
 
     //get the price for quote_asset
     let quote_asset_price = e.get_price(quote_asset.clone(), timestamp);
     if quote_asset_price.is_none() {
-        return Option::None;
+        return None;
     }
 
     //calculate the cross price
-    Option::Some(
+    Some(
         base_asset_price
             .unwrap()
-            .fixed_div_floor(quote_asset_price.unwrap(), decimals),
+            .fixed_div_floor(quote_asset_price.unwrap(), Constants::DECIMALS),
     )
 }
