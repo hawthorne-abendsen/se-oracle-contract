@@ -209,7 +209,7 @@ impl PriceOracle {
     pub fn twap(e: &Env, asset: Address, records: u32) -> Option<i128> {
         let prices_result = e.get_prices(asset, records);
         if prices_result.is_none() {
-            return Option::None;
+            return None;
         }
 
         let prices = prices_result.unwrap();
@@ -226,7 +226,7 @@ impl PriceOracle {
     pub fn x_twap(e: &Env, base_asset: Address, quote_asset: Address, records: u32) -> Option<i128> {
         let prices_result = e.get_x_prices(base_asset, quote_asset, records);
         if prices_result.is_none() {
-            return Option::None;
+            return None;
         }
 
         let prices = prices_result.unwrap();

@@ -145,10 +145,10 @@ fn last_price_test() {
 
     //check last prices
     let result = client.lastprice(&assets.get_unchecked(1).unwrap());
-    assert_ne!(result, Option::None);
+    assert_ne!(result, None);
     assert_eq!(
         result,
-        Option::Some(PriceData {
+        Some(PriceData {
             price: normalize_price(200),
             timestamp: 900_000 as u64
         })
@@ -174,10 +174,10 @@ fn get_price_test() {
 
     //check last prices
     let mut result = client.lastprice(&assets.get_unchecked(1).unwrap());
-    assert_ne!(result, Option::None);
+    assert_ne!(result, None);
     assert_eq!(
         result,
-        Option::Some(PriceData {
+        Some(PriceData {
             price: normalize_price(200),
             timestamp: 900_000 as u64
         })
@@ -185,10 +185,10 @@ fn get_price_test() {
 
     //check price at 899_000
     result = client.price(&assets.get_unchecked(1).unwrap(), &899_000);
-    assert_ne!(result, Option::None);
+    assert_ne!(result, None);
     assert_eq!(
         result,
-        Option::Some(PriceData {
+        Some(PriceData {
             price: normalize_price(100),
             timestamp: 600_000 as u64
         })
@@ -212,10 +212,10 @@ fn get_x_lt_price_test() {
         &assets.get_unchecked(1).unwrap(),
         &assets.get_unchecked(2).unwrap(),
     );
-    assert_ne!(result, Option::None);
+    assert_ne!(result, None);
     assert_eq!(
         result,
-        Option::Some(PriceData {
+        Some(PriceData {
             price: normalize_price(1),
             timestamp: 600_000 as u64
         })
@@ -246,10 +246,10 @@ fn get_x_price_test() {
         &assets.get_unchecked(1).unwrap(),
         &assets.get_unchecked(2).unwrap(),
     );
-    assert_ne!(result, Option::None);
+    assert_ne!(result, None);
     assert_eq!(
         result,
-        Option::Some(PriceData {
+        Some(PriceData {
             price: normalize_price(1),
             timestamp: 900_000 as u64
         })
@@ -261,10 +261,10 @@ fn get_x_price_test() {
         &assets.get_unchecked(2).unwrap(),
         &899_000,
     );
-    assert_ne!(result, Option::None);
+    assert_ne!(result, None);
     assert_eq!(
         result,
-        Option::Some(PriceData {
+        Some(PriceData {
             price: normalize_price(1),
             timestamp: 600_000 as u64
         })
@@ -292,7 +292,7 @@ fn twap_test() {
 
     let result = client.twap(&assets.get_unchecked(1).unwrap(), &2);
 
-    assert_ne!(result, Option::None);
+    assert_ne!(result, None);
     assert_eq!(result.unwrap(), normalize_price(150));
 }
 
@@ -321,7 +321,7 @@ fn x_twap_test() {
         &2,
     );
 
-    assert_ne!(result, Option::None);
+    assert_ne!(result, None);
     assert_eq!(result.unwrap(), normalize_price(1));
 }
 
@@ -331,7 +331,7 @@ fn get_non_registered_asset_price_test() {
 
     //try to get price for unknown asset
     let result = client.lastprice(&Address::random(&env));
-    assert_eq!(result, Option::None);
+    assert_eq!(result, None);
 }
 
 #[test]
@@ -364,6 +364,6 @@ fn unauthorized_test() {
 //     let asset = assets.first().unwrap().ok().unwrap();
 
 //     let prices = client.prices(&asset, &10);
-//     assert_ne!(prices, Option::None);
+//     assert_ne!(prices, None);
 //     assert_eq!(prices.unwrap().len(), 10);
 // }

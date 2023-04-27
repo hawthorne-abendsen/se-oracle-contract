@@ -2,8 +2,6 @@
 extern crate std;
 extern crate alloc;
 
-use std::println;
-
 use alloc::rc::Rc;
 use soroban_sdk::{testutils::Address as _, xdr, Address, BytesN, Env, Symbol, TryIntoVal};
 
@@ -74,8 +72,6 @@ pub fn register_stellar_asset_contract(e: &Env, admin: Address) -> Address {
         .unwrap()
         .try_into_val(e)
         .unwrap();
-
-    println!("Token contract id: {:?}", token_id);
 
     let issuer_address = Address::from_account_id(e, &BytesN::from_array(e, &Constants::ADMIN));
 
@@ -208,8 +204,8 @@ fn deposit_and_charge_test() {
     let contract = deposit_random_contract(&env, &client, &config_data, &token, &100);
 
     let mut balance = client.balance(&contract);
-    assert_ne!(balance, Option::None);
-    assert_eq!(balance, Option::Some(100));
+    assert_ne!(balance, None);
+    assert_eq!(balance, Some(100));
 
     let updates = get_updates(&env, &config_data.assets, normalize_price(100));
 
@@ -222,8 +218,8 @@ fn deposit_and_charge_test() {
     assert_ne!(price, None);
 
     balance = client.balance(&contract);
-    assert_ne!(balance, Option::None);
-    assert_eq!(balance, Option::Some(0));
+    assert_ne!(balance, None);
+    assert_eq!(balance, Some(0));
 }
 
 #[test]
@@ -251,10 +247,10 @@ fn last_price_test() {
     let result = env.as_contract(&contract, || {
         client.lastprice(&assets.get_unchecked(1).unwrap())
     });
-    assert_ne!(result, Option::None);
+    assert_ne!(result, None);
     assert_eq!(
         result,
-        Option::Some(PriceData {
+        Some(PriceData {
             price: normalize_price(200),
             timestamp: 900_000 as u64
         })
@@ -284,10 +280,10 @@ fn get_price_test() {
     let mut result = env.as_contract(&contract, || {
         client.lastprice(&assets.get_unchecked(1).unwrap())
     });
-    assert_ne!(result, Option::None);
+    assert_ne!(result, None);
     assert_eq!(
         result,
-        Option::Some(PriceData {
+        Some(PriceData {
             price: normalize_price(200),
             timestamp: 900_000 as u64
         })
@@ -297,10 +293,10 @@ fn get_price_test() {
     result = env.as_contract(&contract, || {
         client.price(&assets.get_unchecked(1).unwrap(), &899_000)
     });
-    assert_ne!(result, Option::None);
+    assert_ne!(result, None);
     assert_eq!(
         result,
-        Option::Some(PriceData {
+        Some(PriceData {
             price: normalize_price(100),
             timestamp: 600_000 as u64
         })
@@ -328,10 +324,10 @@ fn get_x_lt_price_test() {
             &assets.get_unchecked(2).unwrap(),
         )
     });
-    assert_ne!(result, Option::None);
+    assert_ne!(result, None);
     assert_eq!(
         result,
-        Option::Some(PriceData {
+        Some(PriceData {
             price: normalize_price(1),
             timestamp: 600_000 as u64
         })
@@ -366,10 +362,10 @@ fn get_x_price_test() {
             &assets.get_unchecked(2).unwrap(),
         )
     });
-    assert_ne!(result, Option::None);
+    assert_ne!(result, None);
     assert_eq!(
         result,
-        Option::Some(PriceData {
+        Some(PriceData {
             price: normalize_price(1),
             timestamp: 900_000 as u64
         })
@@ -383,10 +379,10 @@ fn get_x_price_test() {
             &899_000,
         )
     });
-    assert_ne!(result, Option::None);
+    assert_ne!(result, None);
     assert_eq!(
         result,
-        Option::Some(PriceData {
+        Some(PriceData {
             price: normalize_price(1),
             timestamp: 600_000 as u64
         })
@@ -418,7 +414,7 @@ fn twap_test() {
         client.twap(&assets.get_unchecked(1).unwrap(), &2)
     });
 
-    assert_ne!(result, Option::None);
+    assert_ne!(result, None);
     assert_eq!(result.unwrap(), normalize_price(150));
 }
 
@@ -451,7 +447,7 @@ fn x_twap_test() {
         )
     });
 
-    assert_ne!(result, Option::None);
+    assert_ne!(result, None);
     assert_eq!(result.unwrap(), normalize_price(1));
 }
 
@@ -463,7 +459,7 @@ fn get_non_registered_asset_price_test() {
 
     //try to get price for unknown asset
     let result = env.as_contract(&contract, || client.lastprice(&Address::random(&env)));
-    assert_eq!(result, Option::None);
+    assert_eq!(result, None);
 }
 
 #[test]
