@@ -13,7 +13,7 @@ impl PriceOracle {
 
         e.set_admin(&config.admin);
         //TODO: check if need to remove old prices
-        e.set_redemption_period(config.period);
+        e.set_retention_period(config.period);
         e.set_assets(config.assets);
     }
 
@@ -46,7 +46,7 @@ impl PriceOracle {
 
         let resolution = Constants::RESOLUTION;
 
-        let redemption_period = e.get_redemption_period().unwrap();
+        let retention_period = e.get_retention_period().unwrap();
 
         //get the last timestamp
         let last_timestamp = e.get_last_timestamp();
@@ -77,7 +77,7 @@ impl PriceOracle {
             e.set_price(asset.clone(), price, timestamp);
 
             //remove the old price
-            e.try_delete_old_price(asset, timestamp, redemption_period);
+            e.try_delete_old_price(asset, timestamp, retention_period);
         }
         if last_timestamp.is_none() || timestamp > last_timestamp.unwrap() {
             e.set_last_timestamp(timestamp);
@@ -105,7 +105,7 @@ impl PriceOracle {
     }
 
     pub fn period(e: &Env) -> Option<u64> {
-        e.get_redemption_period()
+        e.get_retention_period()
     }
 
     pub fn assets(e: &Env) -> Option<Vec<Address>> {

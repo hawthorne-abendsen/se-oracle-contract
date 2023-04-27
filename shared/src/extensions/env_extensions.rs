@@ -27,9 +27,9 @@ pub trait EnvExtensions {
 
     fn set_last_timestamp(&self, timestamp: u64);
 
-    fn get_redemption_period(&self) -> Option<u64>;
+    fn get_retention_period(&self) -> Option<u64>;
 
-    fn set_redemption_period(&self, period: u64);
+    fn set_retention_period(&self, period: u64);
 
     fn get_assets(&self) -> Vec<Address>;
 
@@ -126,14 +126,14 @@ impl EnvExtensions for Env {
         self.storage().set(&DataKey::Timestamp, &timestamp);
     }
 
-    fn get_redemption_period(&self) -> Option<u64> {
+    fn get_retention_period(&self) -> Option<u64> {
         if !self.storage().has(&DataKey::RdmPeriod) {
             return None;
         }
         Some(self.storage().get_unchecked(&DataKey::RdmPeriod).unwrap())
     }
 
-    fn set_redemption_period(&self, rdm_period: u64) {
+    fn set_retention_period(&self, rdm_period: u64) {
         self.storage().set(&DataKey::RdmPeriod, &rdm_period);
     }
 
