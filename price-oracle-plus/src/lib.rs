@@ -130,10 +130,10 @@ impl PriceOracleContract {
         price
     }
 
-    pub fn x_lt_price(e: Env, base_asset: Address, quote_asset: Address) -> Option<PriceData> {
+    pub fn x_last_price(e: Env, base_asset: Address, quote_asset: Address) -> Option<PriceData> {
         let invoker = get_invoker_or_panic(&e);
         charge_or_panic(&e, invoker, 2);
-        let price = PriceOracle::x_lt_price(&e, base_asset, quote_asset);
+        let price = PriceOracle::x_last_price(&e, base_asset, quote_asset);
         if price.is_none() {
             return None;
         }

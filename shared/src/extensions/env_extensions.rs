@@ -35,7 +35,7 @@ pub trait EnvExtensions {
 
     fn set_assets(&self, assets: Vec<Address>);
 
-    fn get_prices(&self, asset: Address, rounds: u32) -> Option<Vec<PriceData>>;
+    fn get_prices(&self, asset: Address, records: u32) -> Option<Vec<PriceData>>;
 
     fn get_x_price(
         &self,
@@ -48,7 +48,7 @@ pub trait EnvExtensions {
         &self,
         base_asset: Address,
         quote_asset: Address,
-        rounds: u32,
+        records: u32,
     ) -> Option<Vec<PriceData>>;
 
     fn invoker(&self) -> Option<BytesN<32>>;
@@ -61,7 +61,6 @@ pub trait EnvExtensions {
 }
 
 impl EnvExtensions for Env {
-    
     #[allow(unreachable_code)]
     fn is_authorized(&self, invoker: &Address) -> bool {
         invoker.require_auth();
@@ -114,27 +113,35 @@ impl EnvExtensions for Env {
 
     fn get_last_timestamp(&self) -> Option<u64> {
         //check if the marker is available
-        if !self.storage().has(&DataKey::Timestamp) {
+        if !self.storage().has(&DataKey::LastTimestamp) {
             return None;
         }
 
         //get the marker
-        Some(self.storage().get_unchecked(&DataKey::Timestamp).unwrap())
+        Some(
+            self.storage()
+                .get_unchecked(&DataKey::LastTimestamp)
+                .unwrap(),
+        )
     }
 
     fn set_last_timestamp(&self, timestamp: u64) {
-        self.storage().set(&DataKey::Timestamp, &timestamp);
+        self.storage().set(&DataKey::LastTimestamp, &timestamp);
     }
 
     fn get_retention_period(&self) -> Option<u64> {
-        if !self.storage().has(&DataKey::RdmPeriod) {
+        if !self.storage().has(&DataKey::RetentionPeriod) {
             return None;
         }
-        Some(self.storage().get_unchecked(&DataKey::RdmPeriod).unwrap())
+        Some(
+            self.storage()
+                .get_unchecked(&DataKey::RetentionPeriod)
+                .unwrap(),
+        )
     }
 
     fn set_retention_period(&self, rdm_period: u64) {
-        self.storage().set(&DataKey::RdmPeriod, &rdm_period);
+        self.storage().set(&DataKey::RetentionPeriod, &rdm_period);
     }
 
     fn get_assets(&self) -> Vec<Address> {
@@ -149,11 +156,11 @@ impl EnvExtensions for Env {
         self.storage().set(&DataKey::Assets, &assets);
     }
 
-    fn get_prices(&self, asset: Address, rounds: u32) -> Option<Vec<PriceData>> {
+    fn get_prices(&self, asset: Address, records: u32) -> Option<Vec<PriceData>> {
         prices(
             &self,
             |timestamp| self.get_price(asset.clone(), timestamp),
-            rounds,
+            records,
         )
     }
 
@@ -170,12 +177,12 @@ impl EnvExtensions for Env {
         &self,
         base_asset: Address,
         quote_asset: Address,
-        rounds: u32,
+        records: u32,
     ) -> Option<Vec<PriceData>> {
         prices(
             self,
             |timestamp| get_x_price(&self, &base_asset, &quote_asset, timestamp),
-            rounds,
+            records,
         )
     }
 
@@ -224,7 +231,7 @@ impl EnvExtensions for Env {
 fn prices<F: Fn(u64) -> Option<i128>>(
     e: &Env,
     get_price_fn: F,
-    rounds: u32,
+    records: u32,
 ) -> Option<Vec<PriceData>> {
     //check if the asset is valid
     let mut timestamp = e.get_last_timestamp().unwrap_or(0);
@@ -235,7 +242,12 @@ fn prices<F: Fn(u64) -> Option<i128>>(
     let mut prices = Vec::new(&e);
     let resolution = Constants::RESOLUTION as u64;
 
-    for _ in 0..rounds {
+    let mut records = records;
+    if records > 50 {
+        records = 50;
+    }
+
+    for _ in 0..records {
         let price = get_price_fn(timestamp);
         if price.is_none() {
             //TODO: should we put None here?
@@ -263,7 +275,7 @@ fn get_x_price(
 ) -> Option<i128> {
     //check if the asset are the same
     if base_asset == quote_asset {
-        panic_with_error!(e, Error::InvalidAssetPair);
+        return Some(10i128.pow(Constants::DECIMALS));
     }
 
     //get the price for base_asset

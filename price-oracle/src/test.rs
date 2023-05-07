@@ -196,7 +196,7 @@ fn get_price_test() {
 }
 
 #[test]
-fn get_x_lt_price_test() {
+fn get_x_last_price_test() {
     let (env, client, init_data) = init_contract_with_admin();
 
     let admin = &init_data.admin;
@@ -208,7 +208,7 @@ fn get_x_lt_price_test() {
     client.set_price(&admin, &updates, &timestamp);
 
     //check last x price
-    let result = client.x_lt_price(
+    let result = client.x_last_price(
         &assets.get_unchecked(1).unwrap(),
         &assets.get_unchecked(2).unwrap(),
     );
@@ -242,7 +242,7 @@ fn get_x_price_test() {
     client.set_price(&admin, &updates, &timestamp);
 
     //check last prices
-    let mut result = client.x_lt_price(
+    let mut result = client.x_last_price(
         &assets.get_unchecked(1).unwrap(),
         &assets.get_unchecked(2).unwrap(),
     );
@@ -327,10 +327,35 @@ fn x_twap_test() {
 
 #[test]
 fn get_non_registered_asset_price_test() {
-    let (env, client, _) = init_contract_with_admin();
+    let (env, client, config_data) = init_contract_with_admin();
 
     //try to get price for unknown asset
-    let result = client.lastprice(&Address::random(&env));
+    let mut result = client.lastprice(&Address::random(&env));
+    assert_eq!(result, None);
+
+    //try to get price for unknown base asset
+    result = client.x_last_price(&Address::random(&env), &config_data.assets.get_unchecked(1).unwrap());
+    assert_eq!(result, None);
+
+    //try to get price for unknown quote asset
+    result = client.x_last_price(&config_data.assets.get_unchecked(1).unwrap(), &Address::random(&env));
+    assert_eq!(result, None);
+
+    //try to get price for both unknown assets
+    result = client.x_last_price(&Address::random(&env), &Address::random(&env));
+    assert_eq!(result, None);
+}
+
+#[test]
+fn get_asset_price_for_invalid_timestamp_test() {
+    let (env, client, config_data) = init_contract_with_admin();
+
+    
+    let mut result = client.price(&config_data.assets.get_unchecked(1).unwrap(), &u64::MAX);
+    assert_eq!(result, None);
+
+    //try to get price for unknown asset
+    result = client.lastprice(&Address::random(&env));
     assert_eq!(result, None);
 }
 
@@ -348,22 +373,3 @@ fn unauthorized_test() {
     //set prices for assets
     client.set_price(&account, &updates, &timestamp);
 }
-
-// #[test]
-// fn update_test() {
-//     let (client, env, admin) = init_contract_with_admin();
-//     let assets = generate_assets(&env, 50);
-//     let mut timestamp = 0;
-//     for i in 0..100 {
-//         timestamp += TIMEFRAME;
-//         let updates = get_updates(&env, assets.clone(), normalize_price(i));
-//         client.set_price(&admin, &updates, &timestamp);
-//         env.budget().reset();
-//     }
-//     //get first address from assets array
-//     let asset = assets.first().unwrap().ok().unwrap();
-
-//     let prices = client.prices(&asset, &10);
-//     assert_ne!(prices, None);
-//     assert_eq!(prices.unwrap().len(), 10);
-// }

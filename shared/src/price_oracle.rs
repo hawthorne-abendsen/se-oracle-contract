@@ -12,7 +12,6 @@ impl PriceOracle {
         e.panic_if_not_admin(&user);
 
         e.set_admin(&config.admin);
-        //TODO: check if need to remove old prices
         e.set_retention_period(config.period);
         e.set_assets(config.assets);
     }
@@ -158,8 +157,6 @@ impl PriceOracle {
         quote_asset: Address,
         timestamp: u64,
     ) -> Option<PriceData> {
-        verify_pair(&e, &base_asset, &quote_asset);
-
         let normalized_timestamp = timestamp.get_normalized_timestamp(Constants::RESOLUTION.into());
 
         let price = e.get_x_price(base_asset, quote_asset, normalized_timestamp);
@@ -174,9 +171,7 @@ impl PriceOracle {
         })
     }
 
-    pub fn x_lt_price(e: &Env, base_asset: Address, quote_asset: Address) -> Option<PriceData> {
-        verify_pair(&e, &base_asset, &quote_asset);
-
+    pub fn x_last_price(e: &Env, base_asset: Address, quote_asset: Address) -> Option<PriceData> {
         let timestamp = e.get_last_timestamp().unwrap_or(0);
         if timestamp == 0 {
             return None;
@@ -238,13 +233,6 @@ impl PriceOracle {
         }
 
         Some(sum / (prices.len() as i128))
-    }
-}
-
-fn verify_pair(e: &Env, base_asset: &Address, quote_asset: &Address) {
-    //check if the asset are the same
-    if base_asset == quote_asset {
-        panic_with_error!(e, Error::InvalidAssetPair);
     }
 }
 

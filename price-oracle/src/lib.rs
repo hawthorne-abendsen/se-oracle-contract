@@ -66,8 +66,8 @@ impl PriceOracleContract {
         PriceOracle::x_price(&e, base_asset, quote_asset, timestamp)
     }
 
-    pub fn x_lt_price(e: Env, base_asset: Address, quote_asset: Address) -> Option<PriceData> {
-        PriceOracle::x_lt_price(&e, base_asset, quote_asset)
+    pub fn x_last_price(e: Env, base_asset: Address, quote_asset: Address) -> Option<PriceData> {
+        PriceOracle::x_last_price(&e, base_asset, quote_asset)
     }
 
     pub fn prices(e: Env, asset: Address, records: u32) -> Option<Vec<PriceData>> {

@@ -4,7 +4,6 @@ use soroban_sdk::contracterror;
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Error {
     Unauthorized = 1,
-    InvalidAssetPair = 2,
     AssetAlreadyPresented = 3,
     InvalidUpdatesLength = 4,
     InvalidPriceValue = 5,

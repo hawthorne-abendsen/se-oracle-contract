@@ -5,6 +5,9 @@ pub trait U64Extensions {
 
 impl U64Extensions for u64 {    
     fn get_normalized_timestamp(self, timeframe: u64) -> u64 {
+        if (self == 0) || (timeframe == 0) {
+            return 0;
+        }
         (self / timeframe) * timeframe
     }
     

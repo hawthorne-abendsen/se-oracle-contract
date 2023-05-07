@@ -304,7 +304,7 @@ fn get_price_test() {
 }
 
 #[test]
-fn get_x_lt_price_test() {
+fn get_x_last_price_test() {
     let (env, client, config_data, token) = init_contract_with_admin();
 
     let admin = &config_data.admin;
@@ -319,7 +319,7 @@ fn get_x_lt_price_test() {
 
     //check last x price
     let result = env.as_contract(&contract, || {
-        client.x_lt_price(
+        client.x_last_price(
             &assets.get_unchecked(1).unwrap(),
             &assets.get_unchecked(2).unwrap(),
         )
@@ -357,7 +357,7 @@ fn get_x_price_test() {
 
     //check last prices
     let mut result = env.as_contract(&contract, || {
-        client.x_lt_price(
+        client.x_last_price(
             &assets.get_unchecked(1).unwrap(),
             &assets.get_unchecked(2).unwrap(),
         )
@@ -455,10 +455,37 @@ fn x_twap_test() {
 fn get_non_registered_asset_price_test() {
     let (env, client, config_data, token) = init_contract_with_admin();
 
-    let contract = deposit_random_contract(&env, &client, &config_data, &token, &100);
+    let contract = deposit_random_contract(&env, &client, &config_data, &token, &1000);
 
     //try to get price for unknown asset
-    let result = env.as_contract(&contract, || client.lastprice(&Address::random(&env)));
+    let mut result = env.as_contract(&contract, || {client.lastprice(&Address::random(&env)) });
+    assert_eq!(result, None);
+
+    //try to get price for unknown base asset
+    result = env.as_contract(&contract, || {client.x_last_price(&Address::random(&env), &config_data.assets.get_unchecked(1).unwrap()) });
+    assert_eq!(result, None);
+
+    //try to get price for unknown quote asset
+    result = env.as_contract(&contract, || {client.x_last_price(&config_data.assets.get_unchecked(1).unwrap(), &Address::random(&env)) });
+    assert_eq!(result, None);
+
+    //try to get price for both unknown assets
+    result = env.as_contract(&contract, || {client.x_last_price(&Address::random(&env), &Address::random(&env)) });
+    assert_eq!(result, None);
+}
+
+#[test]
+fn get_asset_price_for_invalid_timestamp_test() {
+    let (env, client, config_data, token) = init_contract_with_admin();
+
+    let contract = deposit_random_contract(&env, &client, &config_data, &token, &400);
+
+    
+    let mut result = env.as_contract(&contract, || {client.price(&config_data.assets.get_unchecked(1).unwrap(), &u64::MAX) });
+    assert_eq!(result, None);
+
+    //try to get price for unknown asset
+    result = env.as_contract(&contract, || {client.lastprice(&Address::random(&env)) });
     assert_eq!(result, None);
 }
 

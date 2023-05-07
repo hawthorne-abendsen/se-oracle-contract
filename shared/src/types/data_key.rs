@@ -6,8 +6,8 @@ use super::asset_price_key::AssetPriceKey;
 pub enum DataKey {
     Admin,
     Price(AssetPriceKey),
-    Timestamp,
-    RdmPeriod,
+    LastTimestamp,
+    RetentionPeriod,
     Assets,
     BaseFee,
     Balance(BytesN<32>)
