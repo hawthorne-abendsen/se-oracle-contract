@@ -18,7 +18,7 @@ impl PriceOracleContract {
     /// * `user` - The admin address.
     /// * `config` - The configuration parameters.
     /// 
-    /// #Panics
+    /// # Panics
     /// 
     /// Panics if the caller is not the admin. 
     pub fn config(e: Env, user: Address, config: ConfigData) {
@@ -32,7 +32,7 @@ impl PriceOracleContract {
     /// * `user` - The admin address.
     /// * `assets` - The assets to add.
     /// 
-    /// #Panics
+    /// # Panics
     /// 
     /// Panics if the caller is not the admin, or if the assets are already added.
     pub fn add_assets(e: Env, user: Address, assets: Vec<Address>) {
@@ -47,7 +47,7 @@ impl PriceOracleContract {
     /// * `updates` - The prices to set.
     /// * `timestamp` - The timestamp of the prices.
     /// 
-    /// #Panics
+    /// # Panics
     /// 
     /// Panics if the caller is not the admin, or if the prices are invalid.
     pub fn set_price(e: Env, user: Address, updates: Vec<i128>, timestamp: u64) {

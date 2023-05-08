@@ -27,7 +27,7 @@ impl PriceOracleContract {
     /// * `user` - The admin address.
     /// * `config` - The configuration parameters.
     /// 
-    /// #Panics
+    /// # Panics
     /// 
     /// Panics if the caller is not the admin. 
     pub fn config(e: Env, user: Address, config: ConfigData) {
@@ -43,7 +43,7 @@ impl PriceOracleContract {
     /// * `user` - The admin address.
     /// * `assets` - The assets to add.
     /// 
-    /// #Panics
+    /// # Panics
     /// 
     /// Panics if the caller is not the admin, or if the assets are already added.
     pub fn add_assets(e: Env, user: Address, assets: Vec<Address>) {
@@ -57,7 +57,7 @@ impl PriceOracleContract {
     /// * `user` - The admin address.
     /// * `fee` - The fee to set.
     /// 
-    /// #Panics
+    /// # Panics
     /// 
     /// Panics if the caller is not the admin.
     pub fn set_fee(e: Env, user: Address, fee: i128) {
@@ -73,7 +73,7 @@ impl PriceOracleContract {
     /// * `updates` - The prices to set.
     /// * `timestamp` - The timestamp of the prices.
     /// 
-    /// #Panics
+    /// # Panics
     /// 
     /// Panics if the caller is not the admin, or if the prices are invalid.
     pub fn set_price(e: Env, user: Address, updates: Vec<i128>, timestamp: u64) {
@@ -93,7 +93,7 @@ impl PriceOracleContract {
     /// * `asset` - The fee asset to deposit.
     /// * `amount` - The amount to deposit.
     /// 
-    /// #Panics
+    /// # Panics
     /// 
     /// Panics if the amount is invalid, or if the fee asset is invalid, or if transfer fails.
     pub fn deposit(e: Env, user: Address, account: BytesN<32>, asset: Address, amount: i128) {
