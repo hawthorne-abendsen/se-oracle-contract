@@ -1,4 +1,4 @@
-## Oracle contract for Soroban
+## [Moved to new repository](https://github.com/reflector-network/reflector-contract)
 
 
 ## Building the Contracts
